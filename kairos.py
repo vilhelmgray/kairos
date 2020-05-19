@@ -102,7 +102,7 @@ class Kairos(ttk.Frame):
 
     def execute_command(self, command, id):
         subprocess.run(command, shell=True)
-        self.schedule.delete(id)
+        self.schedule.tag_configure('expired', background='light pink')
 
     def add_task(self):
         deadlineStr = self.add.deadline.str.get()
@@ -119,7 +119,7 @@ class Kairos(ttk.Frame):
         eta = deadline - currTime
 
         command = self.add.cmd.str.get()
-        id = self.schedule.insert('', 'end')
+        id = self.schedule.insert('', 'end', tags=('expired'))
         self.schedule.set(id, 'name', self.add.name.str.get())
         self.schedule.set(id, 'command', command)
         self.schedule.set(id, 'deadline', deadline.strftime('%x %X'))
@@ -144,7 +144,11 @@ class Kairos(ttk.Frame):
             # deadline is the 4th column
             deadlineStr = self.schedule.item(id)['values'][3]
             deadline = datetime.strptime(deadlineStr, '%x %X')
-            eta = deadline - datetime.now()
+            currTime = datetime.now()
+            if deadline > currTime:
+                eta = deadline - currTime
+            else:
+                eta = currTime - deadline
             self.schedule.set(id, 'eta', str(eta).split('.')[0])
         self.refresher = Timer(1, self.update_eta)
         self.refresher.start()
