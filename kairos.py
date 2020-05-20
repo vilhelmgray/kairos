@@ -28,7 +28,7 @@ class Kairos(ttk.Frame):
     def __init__(self, master=None):
         super().__init__(master)
         master.title("Kairos")
-        self.pack()
+        self.pack(fill='both', expand=True)
         self.timers = dict()
         self.create_widgets()
         self.update_eta()
@@ -55,7 +55,7 @@ class Kairos(ttk.Frame):
         self.schedule.heading('command', text='Command')
         self.schedule.heading('eta', text='ETA')
         self.schedule.heading('deadline', text='Deadline')
-        self.schedule.pack(pady=5)
+        self.schedule.pack(fill='both', expand=True, pady=5)
 
         self.add = ttk.Frame(self)
         self.add.pack(pady=5)
