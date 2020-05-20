@@ -102,7 +102,7 @@ class Kairos(ttk.Frame):
 
     def execute_command(self, command, id):
         subprocess.run(command, shell=True)
-        self.schedule.tag_configure('expired', background='light pink')
+        self.schedule.item(id, tags=('expired'))
 
     def add_task(self):
         deadlineStr = self.add.deadline.str.get()
@@ -119,10 +119,11 @@ class Kairos(ttk.Frame):
         eta = deadline - currTime
 
         command = self.add.cmd.str.get()
-        id = self.schedule.insert('', 'end', tags=('expired'))
+        id = self.schedule.insert('', 'end')
         self.schedule.set(id, 'name', self.add.name.str.get())
         self.schedule.set(id, 'command', command)
         self.schedule.set(id, 'deadline', deadline.strftime('%x %X'))
+        self.schedule.tag_configure('expired', background='light pink')
         self.timers[id] = Timer(eta.total_seconds(), self.execute_command,
                                 [command, id])
         self.timers[id].start()
