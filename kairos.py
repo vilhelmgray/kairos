@@ -131,8 +131,7 @@ class Kairos(ttk.Frame):
             return datetime.strptime(self.add.deadline.str.get(), '%x %X')
 
     def deselect_tasks(self, e=None):
-        for selected in self.schedule.selection():
-            self.schedule.selection_remove(selected)
+        self.schedule.selection_remove(self.schedule.selection())
 
     def edit_task(self):
         self.deselect_tasks()
