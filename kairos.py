@@ -20,6 +20,7 @@
 
 from datetime import datetime, timedelta
 import subprocess
+import sys
 from threading import Timer
 import tkinter
 from tkinter import ttk
@@ -81,24 +82,29 @@ class Kairos(ttk.Frame):
         self.add.deadline = ttk.LabelFrame(self.add, text="Deadline")
         self.add.deadline.pack(side='left', padx=5)
         self.add.deadline.str = tkinter.StringVar(self.add.deadline)
+        self.add.deadline.entry = ttk.Entry(self.add.deadline)
+        self.add.deadline.entry['textvariable'] = self.add.deadline.str
+        self.add.deadline.hours = ttk.Spinbox(self.add.deadline,
+                                              to=sys.float_info.max)
+        self.add.deadline.minutes = ttk.Spinbox(self.add.deadline,
+                                                to=sys.float_info.max)
+        self.add.deadline.seconds = ttk.Spinbox(self.add.deadline,
+                                                to=sys.float_info.max)
         self.add.deadline.fmt = tkinter.IntVar()
         self.add.deadline.abs = ttk.Radiobutton(self.add.deadline,
                                                 text="Absolute",
                                                 variable=self.add.deadline.fmt,
                                                 value=0,
-                                                command=self.set_default_abs)
+                                                command=self.select_abs)
         self.add.deadline.abs.pack(side='left');
         self.add.deadline.rel = ttk.Radiobutton(self.add.deadline,
                                                 text="Relative",
                                                 variable=self.add.deadline.fmt,
                                                 value=1,
-                                                command=self.set_default_rel)
+                                                command=self.select_rel)
         self.add.deadline.rel.pack(side='left');
         self.add.deadline.abs.invoke()
         self.add.deadline.pack(side='left', padx=5)
-        self.add.deadline.entry = ttk.Entry(self.add.deadline)
-        self.add.deadline.entry['textvariable'] = self.add.deadline.str
-        self.add.deadline.entry.pack()
 
     def execute_command(self, command, id):
         subprocess.run(command, shell=True)
@@ -107,10 +113,9 @@ class Kairos(ttk.Frame):
     def add_task(self):
         deadlineStr = self.add.deadline.str.get()
         if self.add.deadline.fmt.get():
-            deadlineRel = datetime.strptime(deadlineStr, "%H:%M:%S")
-            delta = timedelta(hours=deadlineRel.hour,
-                              minutes=deadlineRel.minute,
-                              seconds=deadlineRel.second)
+            delta = timedelta(hours=float(self.add.deadline.hours.get()),
+                              minutes=float(self.add.deadline.minutes.get()),
+                              seconds=float(self.add.deadline.seconds.get()))
             deadline = datetime.now() + delta
         else:
             deadline = datetime.strptime(deadlineStr, '%x %X')
@@ -133,12 +138,25 @@ class Kairos(ttk.Frame):
             self.timers[selected].cancel()
             self.schedule.delete(selected)
 
-    def set_default_abs(self):
+    def select_abs(self):
         currTime = datetime.now()
         self.add.deadline.str.set(currTime.strftime('%x %X'))
+        self.add.deadline.hours.pack_forget()
+        self.add.deadline.minutes.pack_forget()
+        self.add.deadline.seconds.pack_forget()
+        self.add.deadline.entry.pack()
 
-    def set_default_rel(self):
-        self.add.deadline.str.set("00:00:00")
+    def select_rel(self):
+        self.add.deadline.hours.delete(0, 'end')
+        self.add.deadline.hours.insert(0, "0")
+        self.add.deadline.minutes.delete(0, 'end')
+        self.add.deadline.minutes.insert(0, "0")
+        self.add.deadline.seconds.delete(0, 'end')
+        self.add.deadline.seconds.insert(0, "0")
+        self.add.deadline.entry.pack_forget()
+        self.add.deadline.hours.pack()
+        self.add.deadline.minutes.pack()
+        self.add.deadline.seconds.pack()
 
     def update_eta(self):
         for id in self.schedule.get_children():
