@@ -49,6 +49,7 @@ class Kairos(ttk.Frame):
         self.schedule['columns'] = ('name', 'command', 'eta', 'deadline')
         self.schedule['show'] = 'headings'
         self.schedule.bind('<<TreeviewSelect>>', self.select_task)
+        self.schedule.bind('<Escape>', self.deselect_tasks)
         self.schedule.column('name', anchor = 'w')
         self.schedule.column('command', anchor = 'w')
         self.schedule.column('deadline', anchor='e')
@@ -129,7 +130,13 @@ class Kairos(ttk.Frame):
         else:
             return datetime.strptime(self.add.deadline.str.get(), '%x %X')
 
+    def deselect_tasks(self, e=None):
+        for selected in self.schedule.selection():
+            self.schedule.selection_remove(selected)
+
     def edit_task(self):
+        self.deselect_tasks()
+
         deadline = self.get_deadline()
         currTime = datetime.now()
         if deadline < currTime: return
@@ -148,6 +155,8 @@ class Kairos(ttk.Frame):
         self.timers[id].start()
 
     def add_task(self):
+        self.deselect_tasks()
+
         deadline = self.get_deadline()
         currTime = datetime.now()
         if deadline < currTime: return
