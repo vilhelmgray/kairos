@@ -48,6 +48,7 @@ class Kairos(ttk.Frame):
         self.schedule = ttk.Treeview(self)
         self.schedule['columns'] = ('name', 'command', 'eta', 'deadline')
         self.schedule['show'] = 'headings'
+        self.schedule.bind('<<TreeviewSelect>>', self.select_task)
         self.schedule.column('name', anchor = 'w')
         self.schedule.column('command', anchor = 'w')
         self.schedule.column('deadline', anchor='e')
@@ -58,12 +59,11 @@ class Kairos(ttk.Frame):
         self.schedule.heading('deadline', text='Deadline')
         self.schedule.pack(fill='both', expand=True, pady=5)
 
+        self.addButton = ttk.Button(self, text="Add", command=self.add_task)
+        self.addButton.pack(pady=5)
+
         self.add = ttk.Frame(self)
         self.add.pack(pady=5)
-
-        self.add.addButton = ttk.Button(self.add, text="Add",
-                                        command=self.add_task)
-        self.add.addButton.pack()
 
         self.add.name = ttk.LabelFrame(self.add, text="Name")
         self.add.name.pack(side='left', padx=5)
@@ -106,19 +106,49 @@ class Kairos(ttk.Frame):
         self.add.deadline.abs.invoke()
         self.add.deadline.pack(side='left', padx=5)
 
+        self.editButton = ttk.Button(self, text="Edit", command=self.edit_task)
+        self.editButton.pack(pady=5)
+
     def execute_command(self, command, id):
         subprocess.run(command, shell=True)
         self.schedule.item(id, tags=('expired'))
 
-    def add_task(self):
-        deadlineStr = self.add.deadline.str.get()
+    def select_task(self, e):
+        id = self.schedule.focus()
+        self.add.name.str.set(self.schedule.item(id)['values'][0])
+        self.add.cmd.str.set(self.schedule.item(id)['values'][1])
+        self.add.deadline.abs.invoke()
+        self.add.deadline.str.set(self.schedule.item(id)['values'][3])
+
+    def get_deadline(self):
         if self.add.deadline.fmt.get():
             delta = timedelta(hours=float(self.add.deadline.hours.get()),
                               minutes=float(self.add.deadline.minutes.get()),
                               seconds=float(self.add.deadline.seconds.get()))
-            deadline = datetime.now() + delta
+            return datetime.now() + delta
         else:
-            deadline = datetime.strptime(deadlineStr, '%x %X')
+            return datetime.strptime(self.add.deadline.str.get(), '%x %X')
+
+    def edit_task(self):
+        deadline = self.get_deadline()
+        currTime = datetime.now()
+        if deadline < currTime: return
+        eta = deadline - currTime
+
+        id = self.schedule.focus()
+        command = self.add.cmd.str.get()
+        self.schedule.set(id, 'name', self.add.name.str.get())
+        self.schedule.set(id, 'command', command)
+        self.schedule.set(id, 'deadline', deadline.strftime('%x %X'))
+        self.schedule.item(id, tags=())
+
+        self.timers[id].cancel()
+        self.timers[id] = Timer(eta.total_seconds(), self.execute_command,
+                                [command, id])
+        self.timers[id].start()
+
+    def add_task(self):
+        deadline = self.get_deadline()
         currTime = datetime.now()
         if deadline < currTime: return
         eta = deadline - currTime
