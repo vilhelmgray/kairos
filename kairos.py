@@ -23,195 +23,217 @@ from datetime import datetime, timedelta
 import subprocess
 import sys
 from threading import Timer
-import tkinter
-from tkinter import ttk
+import gi
+gi.require_version("Gtk", "3.0")
+from gi.repository import GLib, Gtk
 
-class Kairos(ttk.Frame):
-    def __init__(self, master=None):
-        super().__init__(master)
-        master.title("Kairos")
-        self.pack(fill='both', expand=True)
+class Kairos(Gtk.Window):
+    def __init__(self):
+        Gtk.Window.__init__(self, title="Kairos", default_height=480, default_width=640)
+        self.connect("destroy", self.destroy)
+        self.set_border_width(10)
+
         self.timers = dict()
         self.create_widgets()
-        self.update_eta()
+        GLib.timeout_add(1000, self.update_eta)
 
-    def destroy(self):
-        self.refresher.cancel()
-        for id in self.timers:
-            self.timers[id].cancel()
-        super().destroy()
+    def destroy(self, widget):
+        for stamp in self.timers:
+            self.timers[stamp].cancel()
+        Gtk.main_quit()
 
     def create_widgets(self):
-        self.deleteButton = ttk.Button(self, text="Delete",
-                                       command=self.delete_tasks)
-        self.deleteButton.pack(pady=5)
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.add(vbox)
 
-        self.schedule = ttk.Treeview(self)
-        self.schedule['columns'] = ('name', 'command', 'eta', 'deadline')
-        self.schedule['show'] = 'headings'
-        self.schedule.bind('<<TreeviewSelect>>', self.select_task)
-        self.schedule.bind('<Escape>', self.deselect_tasks)
-        self.schedule.column('name', anchor = 'w')
-        self.schedule.column('command', anchor = 'w')
-        self.schedule.column('deadline', anchor='e')
-        self.schedule.column('eta', anchor='e')
-        self.schedule.heading('name', text='Name')
-        self.schedule.heading('command', text='Command')
-        self.schedule.heading('eta', text='ETA')
-        self.schedule.heading('deadline', text='Deadline')
-        self.schedule.pack(fill='both', expand=True, pady=5)
+        deleteButton = Gtk.Button(label="Delete")
+        deleteButton.connect("clicked", self.delete_tasks)
+        vbox.pack_start(deleteButton, False, False, 0)
 
-        self.addButton = ttk.Button(self, text="Add", command=self.add_task)
-        self.addButton.pack(pady=5)
+        scrolledWindow = Gtk.ScrolledWindow()
+        vbox.pack_start(scrolledWindow, True, True, 0)
 
-        self.add = ttk.Frame(self)
-        self.add.pack(pady=5)
+        self.schedule = Gtk.ListStore(str, str, str, str, str)
+        tasksView = Gtk.TreeView(model=Gtk.TreeModelSort(model=self.schedule))
+        self.selection = tasksView.get_selection()
+        self.selection.connect("changed", self.select_task)
+        self.selection.set_mode(Gtk.SelectionMode.MULTIPLE)
 
-        self.add.name = ttk.LabelFrame(self.add, text="Name")
-        self.add.name.pack(side='left', padx=5)
-        self.add.name.str = tkinter.StringVar(self.add.name, "Unnamed")
-        self.add.name.entry = ttk.Entry(self.add.name)
-        self.add.name.entry['textvariable'] = self.add.name.str
-        self.add.name.entry.pack()
+        renderer = Gtk.CellRendererText()
+        deadlineColumn = Gtk.TreeViewColumn("Deadline", renderer, text=0)
+        deadlineColumn.set_sort_column_id(0)
+        deadlineColumn.set_sort_indicator(True)
+        etaColumn = Gtk.TreeViewColumn("ETA", renderer, text=1, background=2)
+        etaColumn.set_sort_column_id(1)
+        etaColumn.set_sort_indicator(True)
+        nameColumn = Gtk.TreeViewColumn("Name", renderer, text=3)
+        nameColumn.set_resizable(True)
+        nameColumn.set_sort_column_id(3)
+        nameColumn.set_sort_indicator(True)
+        commandColumn = Gtk.TreeViewColumn("Command", renderer, text=4)
+        commandColumn.set_resizable(True)
+        tasksView.append_column(deadlineColumn)
+        tasksView.append_column(etaColumn)
+        tasksView.append_column(nameColumn)
+        tasksView.append_column(commandColumn)
+        scrolledWindow.add(tasksView)
 
-        self.add.cmd = ttk.LabelFrame(self.add, text="Command")
-        self.add.cmd.pack(side='left', padx=5)
-        self.add.cmd.str = tkinter.StringVar(self.add.cmd)
-        self.add.cmd.entry = ttk.Entry(self.add.cmd, width=50)
-        self.add.cmd.entry['textvariable'] = self.add.cmd.str
-        self.add.cmd.entry.pack()
+        addButton = Gtk.Button(label="Add")
+        addButton.connect("clicked", self.add_task)
+        vbox.pack_start(addButton, False, False, 0)
 
-        self.add.deadline = ttk.LabelFrame(self.add, text="Deadline")
-        self.add.deadline.pack(side='left', padx=5)
-        self.add.deadline.str = tkinter.StringVar(self.add.deadline)
-        self.add.deadline.entry = ttk.Entry(self.add.deadline)
-        self.add.deadline.entry['textvariable'] = self.add.deadline.str
-        self.add.deadline.hours = ttk.Spinbox(self.add.deadline,
-                                              to=sys.float_info.max)
-        self.add.deadline.minutes = ttk.Spinbox(self.add.deadline,
-                                                to=sys.float_info.max)
-        self.add.deadline.seconds = ttk.Spinbox(self.add.deadline,
-                                                to=sys.float_info.max)
-        self.add.deadline.fmt = tkinter.IntVar()
-        self.add.deadline.abs = ttk.Radiobutton(self.add.deadline,
-                                                text="Absolute",
-                                                variable=self.add.deadline.fmt,
-                                                value=0,
-                                                command=self.select_abs)
-        self.add.deadline.abs.pack(side='left');
-        self.add.deadline.rel = ttk.Radiobutton(self.add.deadline,
-                                                text="Relative",
-                                                variable=self.add.deadline.fmt,
-                                                value=1,
-                                                command=self.select_rel)
-        self.add.deadline.rel.pack(side='left');
-        self.add.deadline.abs.invoke()
-        self.add.deadline.pack(side='left', padx=5)
+        addBox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        vbox.pack_start(addBox, False, False, 0)
 
-        self.editButton = ttk.Button(self, text="Edit", command=self.edit_task)
-        self.editButton.pack(pady=5)
+        nameBox = Gtk.Box(spacing=6)
+        addBox.pack_start(nameBox, False, False, 0)
+        nameLabel = Gtk.Label(label="Name:")
+        self.nameEntry = Gtk.Entry()
+        nameBox.pack_start(nameLabel, False, False, 0)
+        nameBox.pack_start(self.nameEntry, True, True, 0)
 
-    def execute_command(self, command, id):
+        cmdBox = Gtk.Box(spacing=6)
+        addBox.pack_start(cmdBox, False, False, 0)
+        cmdLabel = Gtk.Label(label="Command:")
+        self.cmdEntry = Gtk.Entry()
+        cmdBox.pack_start(cmdLabel, False, False, 0)
+        cmdBox.pack_start(self.cmdEntry, True, True, 0)
+
+        deadlineBox = Gtk.Box(spacing=6)
+        addBox.pack_start(deadlineBox, True, True, 0)
+        deadlineLabel = Gtk.Label(label="Deadline:")
+        self.absRadio = Gtk.RadioButton.new_with_label_from_widget(None, "Absolute")
+        self.absRadio.connect("toggled", self.select_abs)
+        relRadio = Gtk.RadioButton.new_with_label_from_widget(self.absRadio, "Relative")
+        relRadio.connect("toggled", self.select_rel)
+        self.absBox = Gtk.Box(spacing=6)
+        self.deadlineEntry = Gtk.Entry()
+        self.absBox.pack_start(self.deadlineEntry, True, True, 0)
+        self.relBox = Gtk.Box(spacing=6)
+        hoursBox = Gtk.Box(spacing=6)
+        hoursLabel = Gtk.Label(label="Hours")
+        self.hoursSpin = Gtk.SpinButton.new_with_range(0, sys.float_info.max, 1)
+        hoursBox.pack_start(hoursLabel, False, False, 0)
+        hoursBox.pack_start(self.hoursSpin, False, False, 0)
+        minutesBox = Gtk.Box(spacing=6)
+        minutesLabel = Gtk.Label(label="Minutes")
+        self.minutesSpin = Gtk.SpinButton.new_with_range(0, sys.float_info.max, 1)
+        minutesBox.pack_start(minutesLabel, False, False, 0)
+        minutesBox.pack_start(self.minutesSpin, False, False, 0)
+        secondsBox = Gtk.Box(spacing=6)
+        secondsLabel = Gtk.Label(label="Seconds")
+        self.secondsSpin = Gtk.SpinButton.new_with_range(0, sys.float_info.max, 1)
+        secondsBox.pack_start(secondsLabel, False, False, 0)
+        secondsBox.pack_start(self.secondsSpin, False, False, 0)
+        self.relBox.pack_start(hoursBox, False, False, 0)
+        self.relBox.pack_start(minutesBox, False, False, 0)
+        self.relBox.pack_start(secondsBox, False, False, 0)
+        deadlineBox.pack_start(deadlineLabel, False, False, 0)
+        deadlineBox.pack_start(self.absRadio, False, False, 0)
+        deadlineBox.pack_start(relRadio, False, False, 0)
+        deadlineBox.pack_start(self.absBox, True, True, 0)
+        deadlineBox.pack_start(self.relBox, False, False, 0)
+
+        editButton = Gtk.Button(label="Edit")
+        editButton.connect("clicked", self.edit_task)
+        vbox.pack_start(editButton, False, False, 0)
+
+        self.show_all()
+        self.select_abs(self.absRadio)
+
+    def execute_command(self, task, command):
+        self.schedule[task][2] = "light pink"
         subprocess.run(command, shell=True)
-        self.schedule.item(id, tags=('expired'))
 
-    def select_task(self, e):
-        id = self.schedule.focus()
-        self.add.name.str.set(self.schedule.item(id)['values'][0])
-        self.add.cmd.str.set(self.schedule.item(id)['values'][1])
-        self.add.deadline.abs.invoke()
-        self.add.deadline.str.set(self.schedule.item(id)['values'][3])
+    def select_task(self, selection):
+        if not self.selection.count_selected_rows():
+            return
+        (schedule, paths) = self.selection.get_selected_rows()
+        selected = schedule.get_iter(paths[0])
+        self.absRadio.set_active(True)
+        self.deadlineEntry.set_text(schedule[selected][0])
+        self.nameEntry.set_text(schedule[selected][3])
+        self.cmdEntry.set_text(schedule[selected][4])
 
     def get_deadline(self):
-        if self.add.deadline.fmt.get():
-            delta = timedelta(hours=float(self.add.deadline.hours.get()),
-                              minutes=float(self.add.deadline.minutes.get()),
-                              seconds=float(self.add.deadline.seconds.get()))
-            return datetime.now() + delta
+        if self.absRadio.get_active():
+            return datetime.strptime(self.deadlineEntry.get_text(), '%x %X')
         else:
-            return datetime.strptime(self.add.deadline.str.get(), '%x %X')
+            delta = timedelta(hours=self.hoursSpin.get_value(),
+                              minutes=self.minutesSpin.get_value(),
+                              seconds=self.secondsSpin.get_value())
+            return datetime.now() + delta
 
-    def deselect_tasks(self, e=None):
-        self.schedule.selection_remove(self.schedule.selection())
-
-    def edit_task(self):
-        self.deselect_tasks()
-
+    def edit_task(self, widget):
         deadline = self.get_deadline()
         currTime = datetime.now()
         if deadline < currTime: return
         eta = deadline - currTime
 
-        id = self.schedule.focus()
-        command = self.add.cmd.str.get()
-        self.schedule.set(id, 'name', self.add.name.str.get())
-        self.schedule.set(id, 'command', command)
-        self.schedule.set(id, 'deadline', deadline.strftime('%x %X'))
-        self.schedule.item(id, tags=())
+        if not self.selection.count_selected_rows():
+            return
+        paths = self.selection.get_selected_rows()[1]
+        task = self.schedule.get_iter(paths[0])
+        self.selection.unselect_all()
 
-        self.timers[id].cancel()
-        self.timers[id] = Timer(eta.total_seconds(), self.execute_command,
-                                [command, id])
-        self.timers[id].start()
+        self.schedule[task][0] = deadline.strftime('%x %X')
+        self.schedule[task][1] = str(eta).split('.')[0]
+        self.schedule[task][3] = self.nameEntry.get_text()
+        command = self.cmdEntry.get_text()
+        self.schedule[task][4] = command
 
-    def add_task(self):
-        self.deselect_tasks()
+        self.timers[task.user_data].cancel()
+        self.timers[task.user_data] = Timer(eta.total_seconds(), self.execute_command, [task, command])
+        self.timers[task.user_data].start()
 
+    def add_task(self, widget):
         deadline = self.get_deadline()
         currTime = datetime.now()
         if deadline < currTime: return
         eta = deadline - currTime
 
-        command = self.add.cmd.str.get()
-        id = self.schedule.insert('', 'end')
-        self.schedule.set(id, 'name', self.add.name.str.get())
-        self.schedule.set(id, 'command', command)
-        self.schedule.set(id, 'deadline', deadline.strftime('%x %X'))
-        self.schedule.tag_configure('expired', background='light pink')
-        self.timers[id] = Timer(eta.total_seconds(), self.execute_command,
-                                [command, id])
-        self.timers[id].start()
+        self.selection.unselect_all()
 
-    def delete_tasks(self):
-        for selected in self.schedule.selection():
-            self.timers[selected].cancel()
-            self.schedule.delete(selected)
+        deadline = deadline.strftime('%x %X')
+        name = self.nameEntry.get_text()
+        command = self.cmdEntry.get_text()
+        task = self.schedule.append([deadline, str(eta).split('.')[0], "white", name, command])
+        self.timers[task.user_data] = Timer(eta.total_seconds(), self.execute_command, [task, command])
+        self.timers[task.user_data].start()
 
-    def select_abs(self):
+    def delete_tasks(self, widget):
+        refs = []
+        for path in self.selection.get_selected_rows()[1]:
+            refs.append(Gtk.TreeRowReference.new(self.schedule, path))
+        for ref in refs:
+            task = self.schedule.get_iter(ref.get_path())
+            self.timers[task.user_data].cancel()
+            del self.timers[task.user_data]
+            self.schedule.remove(task)
+
+    def select_abs(self, widget):
+        self.relBox.hide()
         currTime = datetime.now()
-        self.add.deadline.str.set(currTime.strftime('%x %X'))
-        self.add.deadline.hours.pack_forget()
-        self.add.deadline.minutes.pack_forget()
-        self.add.deadline.seconds.pack_forget()
-        self.add.deadline.entry.pack()
+        self.deadlineEntry.set_text(currTime.strftime('%x %X'))
+        self.absBox.show()
 
-    def select_rel(self):
-        self.add.deadline.hours.delete(0, 'end')
-        self.add.deadline.hours.insert(0, "0")
-        self.add.deadline.minutes.delete(0, 'end')
-        self.add.deadline.minutes.insert(0, "0")
-        self.add.deadline.seconds.delete(0, 'end')
-        self.add.deadline.seconds.insert(0, "0")
-        self.add.deadline.entry.pack_forget()
-        self.add.deadline.hours.pack()
-        self.add.deadline.minutes.pack()
-        self.add.deadline.seconds.pack()
+    def select_rel(self, widget):
+        self.absBox.hide()
+        self.hoursSpin.set_value(0)
+        self.minutesSpin.set_value(0)
+        self.secondsSpin.set_value(0)
+        self.relBox.show()
 
     def update_eta(self):
-        for id in self.schedule.get_children():
-            # deadline is the 4th column
-            deadlineStr = self.schedule.item(id)['values'][3]
-            deadline = datetime.strptime(deadlineStr, '%x %X')
+        for row in self.schedule:
+            deadline = datetime.strptime(row[0], '%x %X')
             currTime = datetime.now()
             if deadline > currTime:
                 eta = deadline - currTime
             else:
                 eta = currTime - deadline
-            self.schedule.set(id, 'eta', str(eta).split('.')[0])
-        self.refresher = Timer(1, self.update_eta)
-        self.refresher.start()
+            row[1] = str(eta).split('.')[0]
+        return True
 
-root = tkinter.Tk()
-
-kairos = Kairos(master=root)
-kairos.mainloop()
+kairos = Kairos()
+Gtk.main()
